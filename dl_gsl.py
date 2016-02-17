@@ -1,8 +1,11 @@
 #-*- coding: cp949 -*-
 
+DEBUG = False
+
 import urllib
 import re
 import os
+import sys
 
 # 종족
 tribes = ["T", "Z", "P"]
@@ -21,14 +24,27 @@ for t in tribes:
   for p in tribe_players_map[t]:
     tribe_map[p] = t
 
+# 60강, 32강, 16강, 8강 별 url_list_page
+url_list_page_map = {
+  '60': {"url": "http://afbbs.afreeca.com:8080/app/list_ucc_bbs.cgi?nStationNo=9521573&szBbsType=&szBjId=afgsl&nBbsNo=17669292&szOrderType=title_no&szBjId=afgsl&nBbsNo=17669292&szSkin=business&nRowNum=1000"},
+  '32': {"url": "http://afbbs.afreeca.com:8080/app/list_ucc_bbs.cgi?nStationNo=9521573&szBbsType=&szBjId=afgsl&nBbsNo=17669351&szOrderType=title_no&szBjId=afgsl&nBbsNo=17669351&szSkin=business&nRowNum=1000"},
+  '16': {"url": "http://afbbs.afreeca.com:8080/app/list_ucc_bbs.cgi?nStationNo=9521573&szBbsType=&szBjId=afgsl&nBbsNo=17669352&szOrderType=title_no&szBjId=afgsl&nBbsNo=17669352&szSkin=business&nRowNum=1000"},
+  '8':  {"url": "http://afbbs.afreeca.com:8080/app/list_ucc_bbs.cgi?nStationNo=9521573&szBbsType=&szBjId=afgsl&nBbsNo=17669353&szOrderType=title_no&szBjId=afgsl&nBbsNo=17669353&szSkin=business&nRowNum=1000"},
+}
 
 flags = re.MULTILINE | re.DOTALL | re.LOCALE
 
-url_list_page = "http://afbbs.afreeca.com:8080/app/list_ucc_bbs.cgi?nStationNo=9521573&szBbsType=&szBjId=afgsl&nBbsNo=17669292&nPageNo=2&nRowNum=200&szOrderType=title_no&szBjId=afgsl&nBbsNo=17669292&szSkin=business&nRowNum=1000"
+if sys.argv[1] not in url_list_page_map.keys():
+  print "invalid argument [%s]" % (sys.argv[1])
+  exit(-1)
+  
+url_list_page = url_list_page_map[sys.argv[1]]["url"]
+
+
 list_exp = re.compile('<a href="([^"]*)".*전체보기 / ([^/]*)')
 
 url_item_page = "http://d-c.kr/af_Movie/info.php?"
-item_exp = re.compile('([^\s]*)\s*vs\s*([^\s]*)\s*([0-9]*)[^0-9\s]* ([0-9]*)[^0-9\s]*')
+item_exp = re.compile('([^\s]*)\s*vs\s*([^\s]*)\s*([0-9]*)[^0-9\s]* (.*)\s*')
 season_exp = re.compile('[^A-Za-z]*([A-Za-z])\s*[^A-Za-z0-9]*([0-9])\s*([0-9]*)')
 
 # url_list_page 에서 "전체보기" 항목만 URL 가져오기
@@ -39,6 +55,9 @@ objs = list_exp.findall(body_list_page.read(), flags)
 for matched in objs:
   params = matched[0].split("?")[1]
 
+  if DEBUG:
+    print url_item_page + params
+
   # url_item_page 에 URL을 보내주면 영상URL, 영상제목 등이 나옴
   d = urllib.urlopen(url_item_page + params).read().decode('utf-8').encode('euc-kr').split("|")
   mv_url = d[0]     # 영상URL
@@ -47,16 +66,21 @@ for matched in objs:
   info0 = item_exp.search(m[1].strip()).groups()
   info1 = season_exp.search(m[2].strip()).groups()
 
+  if DEBUG:
+    print info0
+    print info1
+
   year = int(info1[2])          # 년도
   season_no = int(info1[1])     # 시즌번호
   code = info1[0]               # 코드S or 코드A
   no_of_players = int(info0[2]) # 몇강인지
-  game_no = int(info0[3])       # 몇번째 게임인지
+  game_no = info0[3]            # 몇번째 게임인지
   player_names = (info0[0] + tribe_map[info0[0]], info0[1] + tribe_map[info0[1]])   # (선수명+종족명, 선수명+종족명) tuple
 
   # 저장할 파일명
   # GSL_2016S1_CodeA_60강_29경기_이신형T_vs_송병구P.mp4
-  save_filename = "GSL_%dS%d_Code%s_%02d강_%02d경기_%s_vs_%s.mp4" % (year, season_no, code, no_of_players, game_no, player_names[0], player_names[1])
+  # GSL_2016S1_CodeS_32강_패자전_윤영서T_vs_이병렬Z.mp4
+  save_filename = "GSL_%dS%d_Code%s_%02d강_%s_%s_vs_%s.mp4" % (year, season_no, code, no_of_players, game_no, player_names[0], player_names[1])
 
   print save_filename
 
@@ -69,5 +93,9 @@ for matched in objs:
   sf = open(save_filename, "wb")
   print "saving..."
   data = urllib.urlopen(mv_url)
-  sf.write(data.read())
+  while True:
+    buf = data.read(1048576)
+    if not buf:
+      break
+    sf.write(buf)
   sf.close()
